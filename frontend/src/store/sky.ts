@@ -2,6 +2,8 @@ import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { STARS, CONSTELLATIONS } from '../data/stars'
 import type { Star } from '../types'
+import { displayConfig, dp } from '../config/display'
+import { projectEquatorial } from '../lib/projection'
 
 export const useSkyStore = defineStore('sky', () => {
   const viewDate = ref(new Date())
@@ -31,36 +33,25 @@ export const useSkyStore = defineStore('sky', () => {
   })
 
   function projectStar(ra: number, dec: number, cx: number, cy: number, scale: number): [number, number] {
-    const ha = (localSiderealTime.value - ra) * 15 * Math.PI / 180
-    const decRad = dec * Math.PI / 180
-    const latRad = latitude.value * Math.PI / 180
-
-    const alt = Math.asin(Math.sin(decRad) * Math.sin(latRad) + Math.cos(decRad) * Math.cos(latRad) * Math.cos(ha))
-    const az = Math.atan2(-Math.cos(decRad) * Math.sin(ha), Math.sin(decRad) * Math.cos(latRad) - Math.cos(decRad) * Math.sin(latRad) * Math.cos(ha))
-
-    if (alt < -0.1) return [-999, -999] // below horizon
-
-    const r = (Math.PI / 2 - alt) * scale * 0.45
-    const x = cx + panX.value + r * Math.sin(az)
-    const y = cy + panY.value - r * Math.cos(az)
-    return [x, y]
+    return projectEquatorial(
+      ra, dec, latitude.value, localSiderealTime.value,
+      cx, cy, scale, panX.value, panY.value
+    )
   }
 
   function starRadius(mag: number): number {
-    return Math.max(1, 5 - mag) * zoom.value
+    const { baseRadius, minRadius } = displayConfig.layers.stars
+    return Math.max(minRadius, baseRadius - mag) * zoom.value
   }
 
   function spectralColor(spectral: string): string {
-    const colors: Record<string, string> = {
-      'O': '#9bb0ff', 'B': '#aabfff', 'A': '#cad7ff',
-      'F': '#f8f7ff', 'G': '#fff4ea', 'K': '#ffd2a1', 'M': '#ffcc6f'
-    }
-    return colors[spectral] || '#ffffff'
+    const { spectralColors, fallbackColor } = displayConfig.layers.stars
+    return spectralColors[spectral] || fallbackColor
   }
 
   function selectStar(x: number, y: number, cx: number, cy: number, scale: number) {
     let closest: Star | null = null
-    let minDist = 20
+    let minDist = dp(displayConfig.layers.stars.hitRadius)
     for (const star of STARS) {
       const [sx, sy] = projectStar(star.ra, star.dec, cx, cy, scale)
       const dist = Math.hypot(sx - x, sy - y)

@@ -67,6 +67,35 @@
         </div>
       </div>
 
+      <!-- Display config provenance -->
+      <div class="text-xs rounded border border-gray-700 p-2">
+        <button class="flex items-center justify-between w-full text-left"
+          @click="showConfigDetails = !showConfigDetails">
+          <span class="text-gray-400">显示配置</span>
+          <span :class="displayConfigNotes.length ? 'text-amber-400' : 'text-gray-500'">
+            {{ displayConfigNotes.length ? `⚠ ${displayConfigNotes.length} 项回落` : '默认值' }}
+            {{ showConfigDetails ? '▲' : '▼' }}
+          </span>
+        </button>
+        <div v-if="showConfigDetails" class="mt-2 space-y-1 text-gray-400">
+          <p>
+            来源：{{ displayConfigSource === 'localStorage'
+              ? `localStorage 覆盖（${DISPLAY_CONFIG_STORAGE_KEY}）`
+              : '内置默认值' }}
+          </p>
+          <p>
+            像素密度 {{ displayConfig.pixelRatio }}×（基准 {{ BASE_PIXEL_RATIO }}×），
+            字号上限 {{ displayConfig.fonts.maxSize }}，地平线比例 {{ displayConfig.horizonRatio }}
+          </p>
+          <p v-if="!displayConfigNotes.length" class="text-gray-500">
+            所有参数均有效，未发生默认值回落。
+          </p>
+          <div v-for="(note, i) in displayConfigNotes" :key="i" class="text-amber-400/90">
+            <span class="text-gray-300">{{ note.path }}：</span>{{ note.reason }}
+          </div>
+        </div>
+      </div>
+
       <div class="text-xs text-gray-500 mt-auto">
         LST: {{ store.localSiderealTime.toFixed(2) }}h
       </div>
@@ -83,8 +112,13 @@
 import { ref } from 'vue'
 import { useSkyStore } from './store/sky'
 import StarCanvas from './components/StarCanvas.vue'
+import {
+  displayConfig, displayConfigSource, displayConfigNotes,
+  DISPLAY_CONFIG_STORAGE_KEY, BASE_PIXEL_RATIO
+} from './config/display'
 
 const store = useSkyStore()
 const dateStr = ref(new Date().toISOString().slice(0, 16))
+const showConfigDetails = ref(false)
 function updateDate() { store.viewDate = new Date(dateStr.value) }
 </script>
