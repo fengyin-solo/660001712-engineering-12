@@ -1,7 +1,12 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { STARS, CONSTELLATIONS } from '../data/stars'
+import { DEFAULT_DISPLAY_CONFIG, resolveDisplayConfig } from '../config/display'
+import type { DisplayConfig } from '../config/display'
 import type { Star } from '../types'
+
+/** localStorage 中显示配置覆盖项的键名，值为一份 JSON（可只含部分字段） */
+const DISPLAY_OVERRIDE_KEY = 'sky-display-config'
 
 export const useSkyStore = defineStore('sky', () => {
   const viewDate = ref(new Date())
@@ -14,6 +19,31 @@ export const useSkyStore = defineStore('sky', () => {
   const selectedStar = ref<Star | null>(null)
   const searchQuery = ref('')
   const latitude = ref(39.9) // Beijing default
+
+  // 显示配置：唯一来源见 config/display.ts；缺失/非法字段回退默认值，原因记入 displayIssues
+  const displayConfig = ref<DisplayConfig>(JSON.parse(JSON.stringify(DEFAULT_DISPLAY_CONFIG)))
+  const displayIssues = ref<string[]>([])
+
+  function applyDisplayOverrides(raw: unknown) {
+    const resolved = resolveDisplayConfig(raw)
+    displayConfig.value = resolved.config
+    displayIssues.value = resolved.issues
+  }
+
+  function loadDisplayOverrides() {
+    try {
+      const text = localStorage.getItem(DISPLAY_OVERRIDE_KEY)
+      if (text === null) return // 无覆盖配置，静默使用默认值
+      try {
+        applyDisplayOverrides(JSON.parse(text))
+      } catch {
+        displayIssues.value = [`localStorage 中 ${DISPLAY_OVERRIDE_KEY} 不是有效 JSON，显示配置已整体回退为默认值`]
+      }
+    } catch {
+      // localStorage 不可用（如隐私模式），使用默认值
+    }
+  }
+  loadDisplayOverrides()
 
   const localSiderealTime = computed(() => {
     const d = viewDate.value
@@ -40,14 +70,15 @@ export const useSkyStore = defineStore('sky', () => {
 
     if (alt < -0.1) return [-999, -999] // below horizon
 
-    const r = (Math.PI / 2 - alt) * scale * 0.45
+    const r = (Math.PI / 2 - alt) * scale * displayConfig.value.horizonRatio
     const x = cx + panX.value + r * Math.sin(az)
     const y = cy + panY.value - r * Math.cos(az)
     return [x, y]
   }
 
   function starRadius(mag: number): number {
-    return Math.max(1, 5 - mag) * zoom.value
+    const star = displayConfig.value.layers.star
+    return Math.max(star.minRadius, star.magBaseline - mag) * zoom.value
   }
 
   function spectralColor(spectral: string): string {
@@ -73,6 +104,7 @@ export const useSkyStore = defineStore('sky', () => {
     viewDate, zoom, panX, panY, showLabels, showConstLines, showGrid,
     selectedStar, searchQuery, latitude, localSiderealTime, filteredStars,
     projectStar, starRadius, spectralColor, selectStar,
+    displayConfig, displayIssues, applyDisplayOverrides,
     STARS, CONSTELLATIONS
   }
 })

@@ -4,7 +4,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useSkyStore } from '../store/sky'
 
 const store = useSkyStore()
@@ -15,29 +15,33 @@ function draw() {
   const canvas = canvasRef.value
   if (!canvas) { animId = requestAnimationFrame(draw); return }
   const ctx = canvas.getContext('2d')!
-  const w = canvas.width = canvas.offsetWidth * 2
-  const h = canvas.height = canvas.offsetHeight * 2
+  const cfg = store.displayConfig
+  const w = canvas.width = canvas.offsetWidth * cfg.pixelRatio
+  const h = canvas.height = canvas.offsetHeight * cfg.pixelRatio
   const cx = w / 2, cy = h / 2
   const scale = Math.min(w, h) * store.zoom
+  const starFontSize = Math.min(cfg.starFontSize * store.zoom, cfg.starFontSizeMax)
+  const constFontSize = Math.min(cfg.constellationFontSize * store.zoom, cfg.constellationFontSizeMax)
 
   // background
-  ctx.fillStyle = '#000814'
+  ctx.fillStyle = cfg.layers.background.color
   ctx.fillRect(0, 0, w, h)
 
   // random background stars
+  const bgStars = cfg.layers.backgroundStars
   const rng = (seed: number) => { let s = seed; return () => { s = (s * 16807) % 2147483647; return s / 2147483647 } }
   const r = rng(42)
-  for (let i = 0; i < 300; i++) {
-    ctx.fillStyle = `rgba(255,255,255,${r() * 0.4})`
+  for (let i = 0; i < bgStars.count; i++) {
+    ctx.fillStyle = `rgba(${bgStars.rgb},${r() * bgStars.maxOpacity})`
     ctx.beginPath()
-    ctx.arc(r() * w, r() * h, r() * 1.5, 0, Math.PI * 2)
+    ctx.arc(r() * w, r() * h, r() * bgStars.maxRadius, 0, Math.PI * 2)
     ctx.fill()
   }
 
   // grid
   if (store.showGrid) {
-    ctx.strokeStyle = 'rgba(100,100,200,0.15)'
-    ctx.lineWidth = 1
+    ctx.strokeStyle = cfg.layers.grid.color
+    ctx.lineWidth = cfg.layers.grid.lineWidth
     for (let dec = -60; dec <= 60; dec += 30) {
       ctx.beginPath()
       for (let ra = 0; ra <= 24; ra += 0.5) {
@@ -60,8 +64,8 @@ function draw() {
 
   // constellation lines
   if (store.showConstLines) {
-    ctx.strokeStyle = 'rgba(100,180,255,0.4)'
-    ctx.lineWidth = 1.5
+    ctx.strokeStyle = cfg.layers.constellationLines.color
+    ctx.lineWidth = cfg.layers.constellationLines.lineWidth
     for (const c of store.CONSTELLATIONS) {
       for (const [i, j] of c.lines) {
         const s1 = store.STARS[i], s2 = store.STARS[j]
@@ -77,6 +81,8 @@ function draw() {
   }
 
   // stars
+  const starStyle = cfg.layers.star
+  const starLabel = cfg.layers.starLabel
   for (const star of store.STARS) {
     const [x, y] = store.projectStar(star.ra, star.dec, cx, cy, scale)
     if (x < -500 || x > w + 500 || y < -500 || y > h + 500) continue
@@ -84,12 +90,12 @@ function draw() {
     const color = store.spectralColor(star.spectral)
 
     // glow
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 3)
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius * starStyle.glowFactor)
     gradient.addColorStop(0, color)
     gradient.addColorStop(1, 'transparent')
     ctx.fillStyle = gradient
     ctx.beginPath()
-    ctx.arc(x, y, radius * 3, 0, Math.PI * 2)
+    ctx.arc(x, y, radius * starStyle.glowFactor, 0, Math.PI * 2)
     ctx.fill()
 
     // core
@@ -99,20 +105,20 @@ function draw() {
     ctx.fill()
 
     // label
-    if (store.showLabels && star.mag < 2.5) {
-      ctx.fillStyle = 'rgba(200,200,255,0.7)'
-      ctx.font = `${10 * store.zoom}px system-ui`
-      ctx.fillText(star.name, x + radius + 4, y + 4)
+    if (store.showLabels && star.mag < starLabel.maxMagnitude) {
+      ctx.fillStyle = starLabel.color
+      ctx.font = `${starFontSize}px ${cfg.labelFontFamily}`
+      ctx.fillText(star.name, x + radius + starLabel.offsetX, y + starLabel.offsetY)
     }
   }
 
   // horizon
-  ctx.strokeStyle = 'rgba(0,200,100,0.3)'
-  ctx.lineWidth = 2
+  ctx.strokeStyle = cfg.layers.horizon.color
+  ctx.lineWidth = cfg.layers.horizon.lineWidth
   ctx.beginPath()
   for (let az = 0; az <= 360; az += 5) {
     const azRad = az * Math.PI / 180
-    const r = (Math.PI / 2) * scale * 0.45
+    const r = (Math.PI / 2) * scale * cfg.horizonRatio
     const x = cx + store.panX + r * Math.sin(azRad)
     const y = cy + store.panY - r * Math.cos(azRad)
     az === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
@@ -122,13 +128,14 @@ function draw() {
 
   // constellation labels
   if (store.showLabels) {
-    ctx.fillStyle = 'rgba(100,180,255,0.8)'
-    ctx.font = `bold ${12 * store.zoom}px system-ui`
+    const constLabel = cfg.layers.constellationLabel
+    ctx.fillStyle = constLabel.color
+    ctx.font = `${constLabel.fontWeight} ${constFontSize}px ${cfg.labelFontFamily}`
     for (const c of store.CONSTELLATIONS) {
       const midStar = store.STARS[c.stars[0]]
       const [x, y] = store.projectStar(midStar.ra, midStar.dec, cx, cy, scale)
       if (x < -500) continue
-      ctx.fillText(c.nameCn, x - 20, y - 15 * store.zoom)
+      ctx.fillText(c.nameCn, x + constLabel.offsetX, y - cfg.constellationLabelOffsetY * store.zoom)
     }
   }
 
@@ -138,8 +145,9 @@ function draw() {
 function onClick(e: MouseEvent) {
   const canvas = canvasRef.value!
   const rect = canvas.getBoundingClientRect()
-  const x = (e.clientX - rect.left) * 2
-  const y = (e.clientY - rect.top) * 2
+  const ratio = store.displayConfig.pixelRatio
+  const x = (e.clientX - rect.left) * ratio
+  const y = (e.clientY - rect.top) * ratio
   const cx = canvas.width / 2, cy = canvas.height / 2
   const scale = Math.min(canvas.width, canvas.height) * store.zoom
   store.selectStar(x, y, cx, cy, scale)

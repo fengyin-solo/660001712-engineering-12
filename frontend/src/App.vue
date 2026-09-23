@@ -4,6 +4,15 @@
     <div class="w-72 bg-gray-900 p-4 flex flex-col gap-4 overflow-y-auto">
       <h1 class="text-xl font-bold text-blue-400">天文星图渲染器</h1>
 
+      <!-- Display config fallback notice -->
+      <div v-if="store.displayIssues.length"
+        class="bg-yellow-900/40 border border-yellow-700 rounded p-2 text-xs text-yellow-200">
+        <p class="font-bold mb-1">显示配置部分无效，已回退为默认值：</p>
+        <ul class="list-disc list-inside space-y-0.5">
+          <li v-for="(issue, i) in store.displayIssues" :key="i">{{ issue }}</li>
+        </ul>
+      </div>
+
       <!-- Search -->
       <div>
         <input v-model="store.searchQuery" placeholder="搜索天体..." class="w-full bg-gray-800 rounded px-3 py-2 text-sm" />
